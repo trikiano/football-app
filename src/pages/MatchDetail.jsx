@@ -202,6 +202,10 @@ export default function MatchDetail() {
             {allPlayers.map(p => {
               const isMotm = match.manOfMatch === p.id;
               const inTeam = match.teamA.includes(p.id) ? 'A' : 'B';
+              // Compute average peer rating
+              const peerRatings = match.peerRatings || {};
+              const peerScores = Object.values(peerRatings).map(votes => votes[p.id]).filter(s => s > 0);
+              const peerAvg = peerScores.length ? (peerScores.reduce((a,b)=>a+b,0)/peerScores.length).toFixed(1) : null;
               return (
                 <div key={p.id} className={`bg-slate-800 rounded-2xl p-4 ${isMotm?'ring-2 ring-yellow-400':''}`}>
                   <div className="flex items-center justify-between mb-3">
@@ -211,7 +215,12 @@ export default function MatchDetail() {
                       </div>
                       <div>
                         <p className="text-white font-semibold">{p.name}</p>
-                        <p className={`text-xs ${inTeam==='A'?'text-green-400':'text-blue-400'}`}>Équipe {inTeam}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className={`text-xs ${inTeam==='A'?'text-green-400':'text-blue-400'}`}>Équipe {inTeam}</p>
+                          {peerAvg && (
+                            <span className="text-xs text-purple-400 font-semibold">👥 {peerAvg}/5 <span className="text-slate-500 font-normal">({peerScores.length} vote{peerScores.length!==1?'s':''})</span></span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <button onClick={() => setMotm(p.id)} className={`p-2 rounded-xl transition-colors ${isMotm?'bg-yellow-500 text-white':'bg-slate-700 text-slate-400'}`}>

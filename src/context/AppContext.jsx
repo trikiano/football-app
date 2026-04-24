@@ -61,6 +61,7 @@ export function AppProvider({ children }) {
       scoreA: 0, scoreB: 0, goals: [],
       status: 'scheduled', manOfMatch: null, ratings: {},
       playerMatchRatings: {}, // { playerId: { score, comment } }
+      peerRatings: {},        // { voterId: { targetId: score } }
       notes: '', createdAt: new Date().toISOString(),
     };
     setMatches(prev => [...prev, m]);
@@ -84,6 +85,15 @@ export function AppProvider({ children }) {
       if (m.id !== matchId) return m;
       const goals = m.goals.filter(g => g.id !== goalId);
       return { ...m, goals, scoreA: goals.filter(g => g.team === 'A').length, scoreB: goals.filter(g => g.team === 'B').length };
+    }));
+  };
+
+  // Peer rating: a player rates another player after a match
+  const setPeerRating = (matchId, voterId, targetId, score) => {
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      const voterRatings = { ...(m.peerRatings?.[voterId] || {}), [targetId]: score };
+      return { ...m, peerRatings: { ...(m.peerRatings || {}), [voterId]: voterRatings } };
     }));
   };
 
@@ -134,7 +144,7 @@ export function AppProvider({ children }) {
       players, addPlayer, updatePlayer, removePlayer, getPlayer,
       matches, createMatch, updateMatch, deleteMatch,
       startMatch, finishMatch, addGoal, removeGoal,
-      setPlayerMatchRating,
+      setPlayerMatchRating, setPeerRating,
       getTopScorers, getPlayerStats, getPlayerMatches,
     }}>
       {children}

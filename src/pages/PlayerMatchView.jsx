@@ -2,14 +2,27 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { ArrowLeft, Star } from 'lucide-react';
+import { POSITIONS, PosBadge } from './Players';
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+function StarRow({ value, onChange, size = 28 }) {
+  return (
+    <div className="flex gap-1">
+      {[1,2,3,4,5].map(s => (
+        <button key={s} onClick={() => onChange(s===value ? 0 : s)} className="p-0.5">
+          <Star size={size} className={s<=value?'text-yellow-400 fill-yellow-400':'text-slate-600'}/>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function PlayerMatchView() {
   const { id } = useParams();
-  const { matches, playerSession, getPlayer, setPlayerMatchRating } = useApp();
+  const { matches, playerSession, getPlayer, setPlayerMatchRating, setPeerRating } = useApp();
   const navigate = useNavigate();
   const match = matches.find(m => m.id === id);
   const playerId = playerSession?.playerId;
@@ -18,6 +31,11 @@ export default function PlayerMatchView() {
   const [myRating, setMyRating] = useState(match?.playerMatchRatings?.[playerId]?.score || 0);
   const [myComment, setMyComment] = useState(match?.playerMatchRatings?.[playerId]?.comment || '');
   const [ratingSaved, setRatingSaved] = useState(false);
+
+  // Peer ratings local state: { targetId: score }
+  const existingVotes = match?.peerRatings?.[playerId] || {};
+  const [peerVotes, setPeerVotes] = useState(existingVotes);
+  const [peerSaved, setPeerSaved] = useState(false);
 
   if (!match || !player) return null;
 
@@ -29,10 +47,23 @@ export default function PlayerMatchView() {
   const drew = match.scoreA === match.scoreB;
   const goals = [...match.goals].sort((a,b)=>a.minute-b.minute);
 
+  // All players in the match except me
+  const allMatchPlayerIds = [...match.teamA, ...match.teamB, ...(match.subsA||[]), ...(match.subsB||[])];
+  const otherPlayers = [...new Set(allMatchPlayerIds)].filter(pid => pid !== playerId).map(pid => getPlayer(pid)).filter(Boolean);
+
   const saveRating = () => {
     setPlayerMatchRating(id, playerId, myRating, myComment);
     setRatingSaved(true); setTimeout(() => setRatingSaved(false), 2000);
   };
+
+  const savePeerVotes = () => {
+    Object.entries(peerVotes).forEach(([targetId, score]) => {
+      if (score > 0) setPeerRating(id, playerId, targetId, score);
+    });
+    setPeerSaved(true); setTimeout(() => setPeerSaved(false), 2000);
+  };
+
+  const votedCount = Object.values(peerVotes).filter(s => s > 0).length;
 
   const resultColor = won ? 'text-green-400' : drew ? 'text-yellow-400' : 'text-red-400';
   const resultText = won ? 'Victoire !' : drew ? 'Match nul' : 'Défaite';
@@ -108,7 +139,7 @@ export default function PlayerMatchView() {
                 const scorer = g.playerId ? getPlayer(g.playerId) : null;
                 const isMe = g.playerId === playerId;
                 return (
-                  <div key={g.id} className={`flex items-center gap-3 rounded-xl px-4 py-3 border-l-4 ${isMe?'bg-green-900/30 border-green-400':'bg-slate-800 border-slate-600'} ${g.team==='A'?'':'opacity-80'}`}>
+                  <div key={g.id} className={`flex items-center gap-3 rounded-xl px-4 py-3 border-l-4 ${isMe?'bg-green-900/30 border-green-400':'bg-slate-800 border-slate-600'}`}>
                     <span className="text-slate-400 text-sm w-8">{g.minute}'</span>
                     <span className={`flex-1 ${isMe?'text-green-300 font-bold':'text-white'}`}>⚽ {scorer?scorer.name:'Inconnu'}{isMe?' (moi)':''}</span>
                     <span className={`text-xs font-bold ${g.team==='A'?'text-green-400':'text-blue-400'}`}>Éq.{g.team}</span>
@@ -116,6 +147,47 @@ export default function PlayerMatchView() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Peer voting */}
+        {match.status === 'finished' && otherPlayers.length > 0 && (
+          <div className="bg-slate-800 rounded-2xl p-4">
+            <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Noter les joueurs</p>
+            <p className="text-slate-500 text-xs mb-4">{votedCount}/{otherPlayers.length} noté{votedCount!==1?'s':''}</p>
+            <div className="space-y-3">
+              {otherPlayers.map(p => {
+                const inTeam = match.teamA.includes(p.id) || (match.subsA||[]).includes(p.id) ? 'A' : 'B';
+                const cfg = POSITIONS[p.position] || POSITIONS.MID;
+                const score = peerVotes[p.id] || 0;
+                const myGoalsForP = match.goals.filter(g => g.playerId === p.id).length;
+                return (
+                  <div key={p.id} className="flex items-center gap-3">
+                    {p.photo ? (
+                      <img src={p.photo} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-white/10"/>
+                    ) : (
+                      <div className={`w-10 h-10 rounded-full flex-shrink-0 ${cfg.color} flex items-center justify-center text-white font-bold text-base`}>
+                        {p.name[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <p className="text-white text-sm font-semibold truncate">{p.name}</p>
+                        <PosBadge pos={p.position} small/>
+                        <span className={`text-[10px] font-bold ${inTeam==='A'?'text-green-400':'text-blue-400'}`}>Éq.{inTeam}</span>
+                        {myGoalsForP > 0 && <span className="text-green-400 text-xs">{'⚽'.repeat(myGoalsForP)}</span>}
+                        {match.manOfMatch === p.id && <span className="text-yellow-400 text-xs">⭐</span>}
+                      </div>
+                      <StarRow value={score} onChange={val => setPeerVotes(prev => ({...prev, [p.id]: val}))} size={24}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={savePeerVotes} disabled={votedCount === 0}
+              className={`w-full mt-4 py-3 rounded-2xl font-bold text-sm transition-colors disabled:opacity-40 ${peerSaved?'bg-green-500 text-white':'bg-blue-600 text-white'}`}>
+              {peerSaved ? '✓ Votes enregistrés !' : `Envoyer mes notes (${votedCount}/${otherPlayers.length})`}
+            </button>
           </div>
         )}
 
